@@ -87,24 +87,32 @@ class MIDIState {
 
 		// Handle note on/off
 		if (message.type === 'noteOn' && message.note !== undefined) {
-			this.activeNotes.add(message.note);
+			const nextNotes = new Set(this.activeNotes);
+			nextNotes.add(message.note);
+			this.activeNotes = nextNotes;
 		} else if (message.type === 'noteOff' && message.note !== undefined) {
-			this.activeNotes.delete(message.note);
+			const nextNotes = new Set(this.activeNotes);
+			nextNotes.delete(message.note);
+			this.activeNotes = nextNotes;
 		}
 	}
 
 	// Manually trigger note for testing
 	simulateNote(midiNote: number, on: boolean) {
 		if (on) {
-			this.activeNotes.add(midiNote);
+			const nextNotes = new Set(this.activeNotes);
+			nextNotes.add(midiNote);
+			this.activeNotes = nextNotes;
 		} else {
-			this.activeNotes.delete(midiNote);
+			const nextNotes = new Set(this.activeNotes);
+			nextNotes.delete(midiNote);
+			this.activeNotes = nextNotes;
 		}
 	}
 
 	// Clear all active notes (panic button)
 	clearAllNotes() {
-		this.activeNotes.clear();
+		this.activeNotes = new Set();
 	}
 
 	// Get connection status

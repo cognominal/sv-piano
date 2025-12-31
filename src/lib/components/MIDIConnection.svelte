@@ -112,18 +112,20 @@
 						<span class="status-label">Recent Messages:</span>
 						<span class="status-value">{midiState.recentMessages.length}</span>
 					</div>
-				</div>
 
-				{#if midiState.activeNotes.size > 0}
-					<div class="active-notes">
-						<span class="notes-label">Currently Playing:</span>
+					<div class="stat stat-notes">
+						<span class="status-label">Currently Playing:</span>
 						<div class="notes-display">
-							{#each Array.from(midiState.activeNotes) as note}
-								<span class="note-chip">{note}</span>
-							{/each}
+							{#if midiState.activeNotes.size > 0}
+								{#each Array.from(midiState.activeNotes) as note}
+									<span class="note-chip">{note}</span>
+								{/each}
+							{:else}
+								<span class="notes-empty">None</span>
+							{/if}
 						</div>
 					</div>
-				{/if}
+				</div>
 
 				<div class="device-actions">
 					<button onclick={() => midiState.clearAllNotes()}>
@@ -374,12 +376,20 @@
 		display: flex;
 		gap: 20px;
 		margin-bottom: 10px;
+		align-items: center;
+		flex-wrap: wrap;
 	}
 
 	.stat {
 		display: flex;
 		gap: 5px;
 		font-size: 14px;
+		align-items: center;
+	}
+
+	.stat-notes {
+		flex: 1 1 320px;
+		min-width: 280px;
 	}
 
 	.status-label {
@@ -391,21 +401,13 @@
 		color: #333;
 	}
 
-	.active-notes {
-		margin: 10px 0;
-	}
-
-	.notes-label {
-		display: block;
-		margin-bottom: 5px;
-		color: #666;
-		font-size: 14px;
-	}
-
 	.notes-display {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 5px;
+		align-items: center;
+		width: 100%;
+		min-height: 26px;
 	}
 
 	.note-chip {
@@ -415,6 +417,11 @@
 		border-radius: 12px;
 		font-size: 12px;
 		font-weight: bold;
+	}
+
+	.notes-empty {
+		color: #777;
+		font-size: 12px;
 	}
 
 	.device-actions {
@@ -433,15 +440,18 @@
 
 	.debug-section {
 		margin-top: 20px;
-		border: 1px solid #ddd;
+		border: 1px solid #b2d3ff;
 		border-radius: 4px;
+		background: #f5f9ff;
+		box-shadow: 0 6px 18px rgba(25, 118, 210, 0.15);
 	}
 
 	.debug-section summary {
 		padding: 10px;
-		background: #f5f5f5;
+		background: #e3f2fd;
 		cursor: pointer;
-		font-weight: bold;
+		font-weight: 700;
+		color: #0d47a1;
 	}
 
 	.message-log {
