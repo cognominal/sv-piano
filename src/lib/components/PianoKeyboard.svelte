@@ -60,10 +60,12 @@
 		return whiteKeyIndex;
 	}
 
-	// Handle key clicks for testing
-	function handleKeyClick(midiNote: number) {
-		const isCurrentlyActive = midiState.activeNotes.has(midiNote);
-		midiState.simulateNote(midiNote, !isCurrentlyActive);
+	function handleKeyDown(midiNote: number) {
+		midiState.playNote(midiNote, true);
+	}
+
+	function handleKeyUp(midiNote: number) {
+		midiState.playNote(midiNote, false);
 	}
 </script>
 
@@ -74,7 +76,10 @@
 			{#each visibleWhiteKeys as midiNote}
 				<button
 					class={getKeyClass(midiNote)}
-					onclick={() => handleKeyClick(midiNote)}
+					onpointerdown={() => handleKeyDown(midiNote)}
+					onpointerup={() => handleKeyUp(midiNote)}
+					onpointerleave={() => handleKeyUp(midiNote)}
+					onpointercancel={() => handleKeyUp(midiNote)}
 					aria-label="Note {midiToNote(midiNote)}"
 				>
 					{#if showNoteNames}
@@ -92,7 +97,10 @@
 					<button
 						class={getKeyClass(midiNote)}
 						style="left: {position * 40 + 28}px"
-						onclick={() => handleKeyClick(midiNote)}
+						onpointerdown={() => handleKeyDown(midiNote)}
+						onpointerup={() => handleKeyUp(midiNote)}
+						onpointerleave={() => handleKeyUp(midiNote)}
+						onpointercancel={() => handleKeyUp(midiNote)}
 						aria-label="Note {midiToNote(midiNote)}"
 					>
 						{#if showNoteNames}
