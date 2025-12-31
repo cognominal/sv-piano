@@ -5,7 +5,9 @@
 
 	// Format notes for display
 	function formatNotes(notes: NoteWithFingering[]): string {
-		return notes.map(note => `${note.note}(${note.fingering})`).join(' - ');
+		return notes
+			.map((note) => (note.fingering ? `${note.note}(${note.fingering})` : note.note))
+			.join(' - ');
 	}
 
 	// Check if a bar is currently active (correct chord being played)
@@ -127,7 +129,7 @@
 								class="note-badge"
 								class:active={midiState.activeNotes.has(note.midiNumber)}
 							>
-								{note.note}<sub>{note.fingering}</sub>
+								{note.note}{#if note.fingering}<sub>{note.fingering}</sub>{/if}
 							</span>
 						{/each}
 					</div>
@@ -141,7 +143,7 @@
 								class="note-badge melody"
 								class:active={midiState.activeNotes.has(note.midiNumber)}
 							>
-								{note.note}<sub>{note.fingering}</sub>
+								{note.note}{#if note.fingering}<sub>{note.fingering}</sub>{/if}
 							</span>
 						{/each}
 					</div>

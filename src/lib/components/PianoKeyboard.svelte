@@ -8,9 +8,10 @@
 	interface Props {
 		showNoteNames?: boolean;
 		octaveRange?: [number, number]; // e.g., [2, 6] for C2 to C6
+		showExpected?: boolean;
 	}
 	
-	let { showNoteNames = true, octaveRange = [2, 6] }: Props = $props();
+	let { showNoteNames = true, octaveRange = [2, 6], showExpected = true }: Props = $props();
 
 	// Calculate visible key range reactively
 	const startNote = $derived(octaveRange[0] * 12 + 12); // C of start octave
@@ -24,7 +25,7 @@
 	function getKeyClass(midiNote: number): string {
 		const baseClass = isWhiteKey(midiNote) ? 'white-key' : 'black-key';
 		const isActive = midiState.activeNotes.has(midiNote);
-		const isExpected = progressionState.expectedNotes.has(midiNote);
+		const isExpected = showExpected && progressionState.expectedNotes.has(midiNote);
 		
 		let classes = [baseClass];
 		
