@@ -105,7 +105,7 @@
 				<div class="device-stats">
 					<div class="stat">
 						<span class="status-label">Active Notes:</span>
-						<span class="status-value">{midiState.activeNotes.size}</span>
+						<span class="status-value count-fixed">{midiState.activeNotes.size}</span>
 					</div>
 
 					<div class="stat">
@@ -399,6 +399,12 @@
 	.status-value {
 		font-weight: bold;
 		color: #333;
+	}
+
+	.count-fixed {
+		min-width: 24px;
+		text-align: right;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.notes-display {
