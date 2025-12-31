@@ -26,10 +26,11 @@
 		const baseClass = isWhiteKey(midiNote) ? 'white-key' : 'black-key';
 		const isActive = midiState.activeNotes.has(midiNote);
 		const isExpected = showExpected && progressionState.expectedNotes.has(midiNote);
+		const isChordCorrect = showExpected && progressionState.checkCurrentChord();
 		
 		let classes = [baseClass];
 		
-		if (isActive && isExpected) {
+		if (isActive && isExpected && isChordCorrect) {
 			classes.push('correct');
 		} else if (isActive) {
 			classes.push('active');

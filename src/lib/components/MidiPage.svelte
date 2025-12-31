@@ -567,7 +567,6 @@
 						<button
 							type="button"
 							class="note-bar"
-							class:active={midiState.activeNotes.has(note.midi)}
 							style="left: {note.time * timelinePixelsPerSecond}px; width: {Math.max(4, note.duration * timelinePixelsPerSecond)}px; top: {(11 - (note.midi % 12)) * timelineLaneHeight + 8}px"
 							onclick={() => handleTimelineClick(note.time)}
 						></button>
@@ -803,16 +802,13 @@
 		border-radius: 999px;
 		border: none;
 		cursor: pointer;
+		box-shadow: inset -1px 0 0 rgba(15, 23, 42, 0.2);
 		transition: background 0.2s ease, transform 0.2s ease;
 	}
 
 	.note-bar:hover {
 		background: #2563eb;
 		transform: translateY(-1px);
-	}
-
-	.note-bar.active {
-		background: #f59e0b;
 	}
 
 	.timeline-marker {
