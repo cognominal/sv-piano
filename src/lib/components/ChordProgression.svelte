@@ -284,25 +284,29 @@
 		align-items: center;
 		margin-bottom: 20px;
 		padding: 15px;
-		background: #f8f8f8;
+		background: #eef4ff;
 		border-radius: 4px;
+		border: 1px solid #c7dbff;
 	}
 
 	.playback-controls button {
 		padding: 8px 16px;
-		border: 1px solid #ddd;
-		background: white;
+		border: 1px solid #9bb8ff;
+		background: #ffffff;
 		border-radius: 4px;
 		cursor: pointer;
 		transition: all 0.2s ease;
+		color: #1e3a8a;
+		font-weight: 600;
 	}
 
 	.playback-controls button:hover:not(:disabled) {
-		background: #e0e0e0;
+		background: #dbe8ff;
+		border-color: #5b86ff;
 	}
 
 	.playback-controls button:disabled {
-		opacity: 0.5;
+		opacity: 0.6;
 		cursor: not-allowed;
 	}
 
@@ -312,6 +316,12 @@
 		gap: 5px;
 		margin-left: auto;
 		cursor: pointer;
+		color: #1e3a8a;
+		font-weight: 600;
+	}
+
+	.auto-advance input {
+		accent-color: #2563eb;
 	}
 
 	.current-chord-info {
