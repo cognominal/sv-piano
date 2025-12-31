@@ -2,6 +2,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import PianoKeyboard from '$lib/components/PianoKeyboard.svelte';
+	import { midiToNote } from '$lib/utils/music-theory.js';
 	import { midiState } from '$lib/stores/midi.svelte.js';
 
 	let fileInput: HTMLInputElement | null = null;
@@ -32,6 +33,13 @@
 	let isRenderingSheet = false;
 	let sheetError = '';
 	let sheetReady = false;
+	let playbackNow = 0;
+	type ActiveNote = { midi: number; name: string; startMs: number; endMs: number; durationMs: number };
+	let activeNoteSlots: ActiveNote[] = [];
+	const activeNoteMap = new Map<number, ActiveNote>();
+	let longestNote: ActiveNote | null = null;
+	let longestDurationMs = 0;
+	const nowPlayingMaxWidthPct = 80;
 	const showSheet = false;
 
 	const STATE_KEY = 'sv-piano:midi-player';
@@ -48,6 +56,36 @@
 			clearTimeout(loopDelayTimeout);
 			loopDelayTimeout = null;
 		}
+	}
+
+	function updateActiveNoteSlots() {
+		const notes = Array.from(activeNoteMap.values()).sort((a, b) => b.midi - a.midi);
+		activeNoteSlots = notes;
+		longestNote = null;
+		longestDurationMs = 0;
+		for (const note of notes) {
+			if (note.durationMs > longestDurationMs) {
+				longestDurationMs = note.durationMs;
+				longestNote = note;
+			}
+		}
+	}
+
+	function clearActiveNoteSlots() {
+		activeNoteMap.clear();
+		activeNoteSlots = [];
+		longestNote = null;
+		longestDurationMs = 0;
+	}
+
+	function getNowPlayingBarStyle(note: ActiveNote) {
+		if (!longestNote || longestDurationMs === 0) return '';
+		const longestMid = (longestNote.startMs + longestNote.endMs) / 2;
+		const noteMid = (note.startMs + note.endMs) / 2;
+		const width = (note.durationMs / longestDurationMs) * nowPlayingMaxWidthPct;
+		const left = 50 + ((noteMid - longestMid) / longestDurationMs) * nowPlayingMaxWidthPct - width / 2;
+		const clampedLeft = Math.max(0, Math.min(100 - width, left));
+		return `left: ${clampedLeft}%; width: ${width}%`;
 	}
 
 	function saveState() {
@@ -154,7 +192,14 @@
 	function stopPlayback() {
 		clearTimers();
 		stopProgressTracking();
+		clearActiveNoteSlots();
 		midiState.clearAllNotes();
+		isPlaying = false;
+	}
+
+	function pausePlayback() {
+		clearTimers();
+		stopProgressTracking();
 		isPlaying = false;
 	}
 
@@ -185,12 +230,24 @@
 
 			timeouts.push(
 				window.setTimeout(() => {
+					const startAt = startTime + startMs;
+					const endAt = startTime + endMs;
+					activeNoteMap.set(note.midi, {
+						midi: note.midi,
+						name: midiToNote(note.midi),
+						startMs: startAt,
+						endMs: endAt,
+						durationMs: Math.max(1, endAt - startAt)
+					});
+					updateActiveNoteSlots();
 					midiState.playNote(note.midi, true, velocity);
 				}, Math.max(0, startMs - (performance.now() - startTime)))
 			);
 
 			timeouts.push(
 				window.setTimeout(() => {
+					activeNoteMap.delete(note.midi);
+					updateActiveNoteSlots();
 					midiState.playNote(note.midi, false);
 				}, Math.max(0, endMs - (performance.now() - startTime)))
 			);
@@ -214,6 +271,7 @@
 
 		const startOffsetTime = performance.now();
 		const progress = () => {
+			playbackNow = performance.now();
 			const elapsedSeconds = ((performance.now() - startOffsetTime) / 1000) * playbackRate;
 			currentPosition = Math.min(stopAt, offset + elapsedSeconds);
 			if (currentPosition - lastStoredPosition >= 0.5 || currentPosition === 0) {
@@ -226,6 +284,7 @@
 			}
 		};
 		stopProgressTracking();
+		clearActiveNoteSlots();
 		rafId = requestAnimationFrame(progress);
 	}
 
@@ -396,12 +455,32 @@
 		}
 	}
 
+	function handleSpaceToggle(event: KeyboardEvent) {
+		if (event.code !== 'Space') return;
+		const target = event.target as HTMLElement | null;
+		if (target?.isContentEditable) return;
+		const tag = target?.tagName;
+		if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+		if (!midi) return;
+		event.preventDefault();
+		if (isPlaying) {
+			pausePlayback();
+			saveState();
+		} else {
+			handlePlay();
+		}
+	}
+
 	onDestroy(() => {
 		stopPlayback();
+		if (browser) {
+			window.removeEventListener('keydown', handleSpaceToggle);
+		}
 	});
 
 	onMount(async () => {
 		if (!browser) return;
+		window.addEventListener('keydown', handleSpaceToggle);
 		loadState();
 		try {
 			const stored = await loadMidiFile();
@@ -574,6 +653,35 @@
 				</div>
 			</div>
 			<div class="timeline-hint">Click a note to jump and restart playback.</div>
+		</div>
+
+		<div class="now-playing">
+			<div class="now-playing-header">
+				<h3>Now Playing</h3>
+				<span class="now-playing-count">{activeNoteSlots.length} active</span>
+			</div>
+			<div class="now-playing-list">
+				{#if activeNoteSlots.length === 0}
+					<p class="now-playing-empty">No notes sounding.</p>
+				{:else}
+					{#each activeNoteSlots as note}
+						{@const remaining = Math.max(0, note.endMs - playbackNow)}
+						{@const ratio = note.durationMs ? remaining / note.durationMs : 0}
+						<div class="now-playing-item">
+							<span class="now-playing-name">{note.name}</span>
+							<div class="now-playing-bar-track">
+								<span class="now-playing-now"></span>
+								<span class="now-playing-bar" style={getNowPlayingBarStyle(note)}>
+									<span
+										class="now-playing-bar-fill"
+										style="width: {Math.max(0, Math.min(1, ratio)) * 100}%"
+									></span>
+								</span>
+							</div>
+						</div>
+					{/each}
+				{/if}
+			</div>
 		</div>
 
 		{#if showSheet}
@@ -824,6 +932,93 @@
 	.timeline-hint {
 		font-size: 12px;
 		color: #475569;
+	}
+
+	.now-playing {
+		margin-top: 16px;
+		display: grid;
+		gap: 10px;
+	}
+
+	.now-playing-header {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+	}
+
+	.now-playing-header h3 {
+		margin: 0;
+		font-size: 1rem;
+		color: #1e293b;
+	}
+
+	.now-playing-count {
+		font-size: 12px;
+		color: #64748b;
+	}
+
+	.now-playing-list {
+		display: grid;
+		gap: 8px;
+		padding: 12px;
+		border-radius: 12px;
+		border: 1px solid rgba(148, 163, 184, 0.4);
+		background: #f8fafc;
+		min-height: 208px;
+		max-height: 208px;
+		overflow-y: auto;
+	}
+
+	.now-playing-item {
+		display: grid;
+		gap: 6px;
+	}
+
+	.now-playing-name {
+		font-weight: 600;
+		color: #1e293b;
+	}
+
+	.now-playing-bar-track {
+		position: relative;
+		height: 6px;
+		background: rgba(148, 163, 184, 0.2);
+		border-radius: 999px;
+	}
+
+	.now-playing-now {
+		position: absolute;
+		left: 50%;
+		top: -2px;
+		bottom: -2px;
+		width: 2px;
+		background: #ef4444;
+		border-radius: 999px;
+		transform: translateX(-50%);
+		pointer-events: none;
+	}
+
+	.now-playing-bar {
+		position: absolute;
+		top: 1px;
+		height: 4px;
+		background: rgba(148, 163, 184, 0.4);
+		border-radius: 999px;
+		overflow: hidden;
+	}
+
+	.now-playing-bar-fill {
+		display: block;
+		height: 100%;
+		background: #2563eb;
+		border-radius: inherit;
+		transition: width 0.08s linear;
+	}
+
+	.now-playing-empty {
+		margin: 0;
+		color: #94a3b8;
+		font-size: 13px;
 	}
 
 	.sheet-panel {

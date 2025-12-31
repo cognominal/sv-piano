@@ -3,7 +3,7 @@
 </script>
 
 <nav class="main-nav">
-	<a class="nav-link" href="/">Home</a>
+	<a class="nav-link" href="/" data-sveltekit-reload>Home</a>
 	<a class="nav-link" href="/midi">MIDI Player</a>
 </nav>
 
