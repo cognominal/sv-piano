@@ -92,6 +92,11 @@ export function findCasioDevices(midiAccess: MIDIAccess): MIDIDevice[] {
 			if (existingDevice) {
 				existingDevice.output = output;
 			} else {
+				const manufacturerMatch = devices.filter(d => !d.output && d.manufacturer === (output.manufacturer || 'Casio'));
+				if (manufacturerMatch.length === 1) {
+					manufacturerMatch[0].output = output;
+					continue;
+				}
 				devices.push({
 					id: output.id,
 					name: output.name || 'Unknown Casio Device',

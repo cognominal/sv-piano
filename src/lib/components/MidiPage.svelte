@@ -481,6 +481,7 @@
 	onMount(async () => {
 		if (!browser) return;
 		window.addEventListener('keydown', handleSpaceToggle);
+		midiState.connect();
 		loadState();
 		try {
 			const stored = await loadMidiFile();
