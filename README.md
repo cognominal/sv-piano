@@ -20,6 +20,8 @@ player with looping, seeking, and sheet music generation.
 
 ## Sheet Music Pipeline (disabled)
 
+Flip showSheet in the code to true if you want it. Deliberately no UI do do it.
+
 The `/api/partition` endpoint converts MIDI to MusicXML using `music21`.
 The `/midi` page posts the selected MIDI file and renders MusicXML with
 OpenSheetMusicDisplay.
