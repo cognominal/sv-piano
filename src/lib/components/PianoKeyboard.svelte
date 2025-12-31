@@ -209,6 +209,18 @@
 		user-select: none;
 	}
 
+	.white-key .note-name {
+		color: #2b2b2b;
+		text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+	}
+
+	.white-key.expected .note-name,
+	.white-key.active .note-name,
+	.white-key.correct .note-name {
+		color: #ffffff;
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+	}
+
 	.black-key .note-name {
 		font-size: 10px;
 	}

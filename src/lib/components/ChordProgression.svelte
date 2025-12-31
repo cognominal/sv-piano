@@ -200,13 +200,15 @@
 		display: grid;
 		grid-template-columns: 80px 120px 1fr 1fr;
 		background: #f5f5f5;
-		font-weight: bold;
+		font-weight: 700;
+		color: #2b2b2b;
 		border-bottom: 2px solid #ddd;
 	}
 
 	.table-header > div {
 		padding: 12px;
 		border-right: 1px solid #ddd;
+		letter-spacing: 0.2px;
 	}
 
 	.table-header > div:last-child {
