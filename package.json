@@ -37,6 +37,7 @@
 	},
 	"type": "module",
 	"dependencies": {
-		"@tonejs/midi": "^2.0.28"
+		"@tonejs/midi": "^2.0.28",
+		"opensheetmusicdisplay": "^1.9.3"
 	}
 }

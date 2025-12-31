@@ -12,6 +12,7 @@
 	type MidiNote = { time: number; duration: number; velocity: number; midi: number };
 	let midi: InstanceType<MidiClass> | null = null;
 	let midiCtor: MidiClass | null = null;
+	let midiBuffer: ArrayBuffer | null = null;
 	let errorMessage = '';
 	let durationSeconds = 0;
 	let playbackRate = 1;
@@ -27,6 +28,11 @@
 	let loopEnd: number | null = null;
 	let isLooping = false;
 	let loopDelayTimeout: number | null = null;
+	let sheetContainer: HTMLDivElement | null = null;
+	let isRenderingSheet = false;
+	let sheetError = '';
+	let sheetReady = false;
+	const showSheet = false;
 
 	const STATE_KEY = 'sv-piano:midi-player';
 	const DB_NAME = 'sv-piano';
@@ -120,6 +126,22 @@
 		if (!resolved) throw new Error('MIDI parser not available');
 		midiCtor = resolved;
 		return resolved;
+	}
+
+	async function renderSheet(xml: string) {
+		if (!browser || !sheetContainer) return;
+		const module = await import('opensheetmusicdisplay');
+		const Display = module.OpenSheetMusicDisplay ?? module.default?.OpenSheetMusicDisplay;
+		if (!Display) throw new Error('Sheet renderer unavailable');
+
+		if (!sheetContainer.childElementCount) {
+			sheetContainer.innerHTML = '';
+		}
+
+		const osmd = new Display(sheetContainer, { drawingParameters: 'compact' });
+		await osmd.load(xml);
+		osmd.render();
+		sheetReady = true;
 	}
 
 	function stopProgressTracking() {
@@ -221,6 +243,7 @@
 		try {
 			const MidiCtor = await ensureMidiCtor();
 			const buffer = await file.arrayBuffer();
+			midiBuffer = buffer;
 			await storeMidiFile(buffer, file.name);
 			const parsed = new MidiCtor(buffer);
 			midi = parsed;
@@ -245,6 +268,46 @@
 
 	function handlePickFile() {
 		fileInput?.click();
+	}
+
+	async function handleGenerateSheet() {
+		if (!browser) return;
+		sheetError = '';
+		sheetReady = false;
+		isRenderingSheet = true;
+
+		try {
+			let buffer = midiBuffer;
+			if (!buffer) {
+				const stored = await loadMidiFile();
+				buffer = stored?.buffer ?? null;
+				if (stored?.name) {
+					fileName = stored.name;
+				}
+			}
+			if (!buffer) throw new Error('No MIDI file loaded');
+
+			const formData = new FormData();
+			const name = fileName || 'file.mid';
+			formData.append('file', new Blob([buffer], { type: 'audio/midi' }), name);
+
+			const response = await fetch('/api/partition', {
+				method: 'POST',
+				body: formData
+			});
+
+			if (!response.ok) {
+				const message = await response.text();
+				throw new Error(message || 'Failed to generate sheet music');
+			}
+
+			const xml = await response.text();
+			await renderSheet(xml);
+		} catch (error) {
+			sheetError = error instanceof Error ? error.message : 'Failed to generate sheet music';
+		} finally {
+			isRenderingSheet = false;
+		}
 	}
 
 	function handlePlay() {
@@ -294,7 +357,7 @@
 			clearTimeout(seekTimeout);
 		}
 		stopPlayback();
-	seekTimeout = window.setTimeout(() => {
+		seekTimeout = window.setTimeout(() => {
 			if (!midi) return;
 			midiState.clearAllNotes();
 			isPlaying = true;
@@ -348,6 +411,7 @@
 			midi = parsed;
 			durationSeconds = parsed.duration;
 			fileName = stored.name;
+			midiBuffer = stored.buffer;
 			currentPosition = Math.min(currentPosition, parsed.duration);
 			timelineNotes = parsed.tracks.flatMap((track) => track.notes).sort((a, b) => a.time - b.time);
 			requestAnimationFrame(() => {
@@ -391,6 +455,11 @@
 			<button type="button" class="action" onclick={handleStop} disabled={!isPlaying}>
 				Stop
 			</button>
+			{#if showSheet}
+				<button type="button" class="action ghost" onclick={handleGenerateSheet} disabled={isRenderingSheet}>
+					{isRenderingSheet ? 'Rendering…' : 'Generate Sheet'}
+				</button>
+			{/if}
 			<label class="loop-toggle">
 				<input
 					type="checkbox"
@@ -507,6 +576,22 @@
 			</div>
 			<div class="timeline-hint">Click a note to jump and restart playback.</div>
 		</div>
+
+		{#if showSheet}
+			<div class="sheet-panel">
+				<div class="sheet-header">
+					<h3>Sheet Music</h3>
+					{#if sheetError}
+						<span class="sheet-error">{sheetError}</span>
+					{/if}
+				</div>
+				<div class="sheet-output" bind:this={sheetContainer}>
+					{#if !sheetReady && !sheetError}
+						<p class="sheet-placeholder">Generate a sheet to display the partition.</p>
+					{/if}
+				</div>
+			</div>
+		{/if}
 	</section>
 
 	<section class="keyboard-panel">
@@ -743,6 +828,42 @@
 	.timeline-hint {
 		font-size: 12px;
 		color: #475569;
+	}
+
+	.sheet-panel {
+		margin-top: 20px;
+		display: grid;
+		gap: 10px;
+	}
+
+	.sheet-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.sheet-header h3 {
+		margin: 0;
+		color: #1e293b;
+	}
+
+	.sheet-error {
+		color: #b91c1c;
+		font-weight: 600;
+	}
+
+	.sheet-output {
+		min-height: 200px;
+		border: 1px solid rgba(148, 163, 184, 0.4);
+		border-radius: 12px;
+		padding: 12px;
+		background: #ffffff;
+		overflow-x: auto;
+	}
+
+	.sheet-placeholder {
+		margin: 0;
+		color: #64748b;
 	}
 
 	.keyboard-panel h2 {

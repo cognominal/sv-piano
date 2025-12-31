@@ -18,6 +18,22 @@ player with looping, seeking, and sheet music generation.
   - Sampled piano fallback when no MIDI output
 - Sheet music rendering from MIDI via a server endpoint
 
+## Sheet Music Pipeline (disabled)
+
+The `/api/partition` endpoint converts MIDI to MusicXML using `music21`.
+The `/midi` page posts the selected MIDI file and renders MusicXML with
+OpenSheetMusicDisplay.
+
+### Requirements
+
+- Python 3
+- music21
+
+Install music21:
+
+```bash
+python3 -m pip install music21
+```
 
 ## Getting Started
 
