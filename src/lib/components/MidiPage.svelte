@@ -45,8 +45,14 @@
 	const STATE_KEY = 'sv-piano:midi-player';
 	const DB_NAME = 'sv-piano';
 	const STORE_NAME = 'midi-files';
+	const LIBRARY_STORE = 'midi-library';
+	const DB_VERSION = 2;
 	const FILE_KEY = 'last-midi';
 
+	type MidiLibraryItem = { name: string; buffer: ArrayBuffer; savedAt: number };
+	let libraryFiles: MidiLibraryItem[] = [];
+	let isSavingLibrary = false;
+	let libraryError = '';
 	let timeouts: number[] = [];
 
 	function clearTimers() {
@@ -121,11 +127,14 @@
 
 	function openDatabase(): Promise<IDBDatabase> {
 		return new Promise((resolve, reject) => {
-			const request = indexedDB.open(DB_NAME, 1);
+			const request = indexedDB.open(DB_NAME, DB_VERSION);
 			request.onupgradeneeded = () => {
 				const db = request.result;
 				if (!db.objectStoreNames.contains(STORE_NAME)) {
 					db.createObjectStore(STORE_NAME);
+				}
+				if (!db.objectStoreNames.contains(LIBRARY_STORE)) {
+					db.createObjectStore(LIBRARY_STORE, { keyPath: 'name' });
 				}
 			};
 			request.onsuccess = () => resolve(request.result);
@@ -157,6 +166,43 @@
 		});
 	}
 
+	async function saveMidiToLibrary(buffer: ArrayBuffer, name: string) {
+		if (!browser) return;
+		const db = await openDatabase();
+		const tx = db.transaction(LIBRARY_STORE, 'readwrite');
+		tx.objectStore(LIBRARY_STORE).put({ name, buffer, savedAt: Date.now() } satisfies MidiLibraryItem);
+		await new Promise<void>((resolve, reject) => {
+			tx.oncomplete = () => resolve();
+			tx.onerror = () => reject(tx.error);
+		});
+	}
+
+	async function loadLibraryFiles(): Promise<MidiLibraryItem[]> {
+		if (!browser) return [];
+		const db = await openDatabase();
+		const tx = db.transaction(LIBRARY_STORE, 'readonly');
+		const request = tx.objectStore(LIBRARY_STORE).getAll();
+		return await new Promise((resolve, reject) => {
+			request.onsuccess = () => {
+				const items = (request.result as MidiLibraryItem[]) ?? [];
+				items.sort((a, b) => b.savedAt - a.savedAt);
+				resolve(items);
+			};
+			request.onerror = () => reject(request.error);
+		});
+	}
+
+	async function deleteLibraryFile(name: string) {
+		if (!browser) return;
+		const db = await openDatabase();
+		const tx = db.transaction(LIBRARY_STORE, 'readwrite');
+		tx.objectStore(LIBRARY_STORE).delete(name);
+		await new Promise<void>((resolve, reject) => {
+			tx.oncomplete = () => resolve();
+			tx.onerror = () => reject(tx.error);
+		});
+	}
+
 	async function ensureMidiCtor(): Promise<MidiClass> {
 		if (midiCtor) return midiCtor;
 		const module = await import('@tonejs/midi');
@@ -180,6 +226,83 @@
 		await osmd.load(xml);
 		osmd.render();
 		sheetReady = true;
+	}
+
+	async function loadMidiFromBuffer(
+		buffer: ArrayBuffer,
+		name: string,
+		autoPlay = false,
+		startPosition: number | null = null
+	) {
+		const MidiCtor = await ensureMidiCtor();
+		const parsed = new MidiCtor(buffer);
+		midi = parsed;
+		durationSeconds = parsed.duration;
+		fileName = name;
+		midiBuffer = buffer;
+		const nextPosition = startPosition ?? 0;
+		currentPosition = Math.min(nextPosition, parsed.duration);
+		lastStoredPosition = 0;
+		timelineNotes = parsed.tracks.flatMap((track) => track.notes).sort((a, b) => a.time - b.time);
+		saveState();
+		requestAnimationFrame(() => {
+			scrollTimelineTo(currentPosition);
+		});
+		if (autoPlay) {
+			isPlaying = true;
+			schedulePlayback(midi, currentPosition);
+		}
+	}
+
+	async function refreshLibrary() {
+		libraryError = '';
+		try {
+			libraryFiles = await loadLibraryFiles();
+		} catch (error) {
+			libraryError = error instanceof Error ? error.message : 'Failed to load MIDI library';
+		}
+	}
+
+	async function handleSaveToLibrary() {
+		if (!midiBuffer || !fileName) return;
+		isSavingLibrary = true;
+		libraryError = '';
+		try {
+			await saveMidiToLibrary(midiBuffer, fileName);
+			await refreshLibrary();
+		} catch (error) {
+			libraryError = error instanceof Error ? error.message : 'Failed to save MIDI file';
+		} finally {
+			isSavingLibrary = false;
+		}
+	}
+
+	async function handleLibrarySelect(entry: MidiLibraryItem) {
+		stopPlayback();
+		isLoading = true;
+		errorMessage = '';
+		try {
+			await storeMidiFile(entry.buffer, entry.name);
+			await loadMidiFromBuffer(entry.buffer, entry.name, true);
+		} catch (error) {
+			midi = null;
+			durationSeconds = 0;
+			errorMessage = error instanceof Error ? error.message : 'Failed to load MIDI file';
+		} finally {
+			isLoading = false;
+		}
+	}
+
+	async function handleDeleteLibrary(entry: MidiLibraryItem, event: Event) {
+		event.stopPropagation();
+		if (!confirm(`Delete "${entry.name}" from saved MIDI?`)) return;
+		libraryError = '';
+		try {
+			await deleteLibraryFile(entry.name);
+			await refreshLibrary();
+		} catch (error) {
+			libraryError = error instanceof Error ? error.message : 'Failed to delete MIDI file';
+		}
 	}
 
 	function stopProgressTracking() {
@@ -300,22 +423,9 @@
 		fileName = file.name;
 
 		try {
-			const MidiCtor = await ensureMidiCtor();
 			const buffer = await file.arrayBuffer();
-			midiBuffer = buffer;
 			await storeMidiFile(buffer, file.name);
-			const parsed = new MidiCtor(buffer);
-			midi = parsed;
-			durationSeconds = parsed.duration;
-			timelineNotes = parsed.tracks.flatMap((track) => track.notes).sort((a, b) => a.time - b.time);
-			currentPosition = 0;
-			lastStoredPosition = 0;
-			saveState();
-			requestAnimationFrame(() => {
-				scrollTimelineTo(0);
-			});
-			isPlaying = true;
-			schedulePlayback(midi, 0);
+			await loadMidiFromBuffer(buffer, file.name, true);
 		} catch (error) {
 			midi = null;
 			durationSeconds = 0;
@@ -483,20 +593,11 @@
 		window.addEventListener('keydown', handleSpaceToggle);
 		midiState.connect();
 		loadState();
+		await refreshLibrary();
 		try {
 			const stored = await loadMidiFile();
 			if (!stored) return;
-			const MidiCtor = await ensureMidiCtor();
-			const parsed = new MidiCtor(stored.buffer);
-			midi = parsed;
-			durationSeconds = parsed.duration;
-			fileName = stored.name;
-			midiBuffer = stored.buffer;
-			currentPosition = Math.min(currentPosition, parsed.duration);
-			timelineNotes = parsed.tracks.flatMap((track) => track.notes).sort((a, b) => a.time - b.time);
-			requestAnimationFrame(() => {
-				scrollTimelineTo(currentPosition);
-			});
+			await loadMidiFromBuffer(stored.buffer, stored.name, false, currentPosition);
 		} catch {
 			// ignore restore failures
 		}
@@ -574,6 +675,51 @@
 			{#if errorMessage}
 				<div class="status-error">{errorMessage}</div>
 			{/if}
+		</div>
+
+		<div class="library-panel">
+			<div class="library-header">
+				{#if midiBuffer && fileName}
+					<button
+						type="button"
+						class="action ghost"
+						onclick={handleSaveToLibrary}
+						disabled={isSavingLibrary}
+					>
+						{isSavingLibrary ? 'Saving…' : 'Save Current MIDI'}
+					</button>
+				{/if}
+				<h3>Saved MIDI</h3>
+			</div>
+			<p class="library-hint">Save the current MIDI to keep it in your library list.</p>
+			{#if libraryError}
+				<div class="library-error">{libraryError}</div>
+			{/if}
+			<div class="library-list">
+				{#if libraryFiles.length === 0}
+					<p class="library-empty">No saved files yet.</p>
+				{:else}
+				{#each libraryFiles as entry}
+					<div class="library-item" class:active={entry.name === fileName}>
+						<button
+							type="button"
+							class="library-select"
+							onclick={() => handleLibrarySelect(entry)}
+						>
+							<span class="library-name">{entry.name}</span>
+						</button>
+						<button
+							type="button"
+							class="library-delete"
+							aria-label="Delete {entry.name}"
+							onclick={(event) => handleDeleteLibrary(entry, event)}
+						>
+							Delete
+						</button>
+					</div>
+				{/each}
+				{/if}
+			</div>
 		</div>
 
 		<div class="playback-sliders">
@@ -789,6 +935,106 @@
 		flex-wrap: wrap;
 		gap: 16px;
 		font-size: 14px;
+	}
+
+	.library-panel {
+		margin-top: 16px;
+		display: grid;
+		gap: 10px;
+	}
+
+	.library-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.library-header h3 {
+		margin: 0;
+		font-size: 1rem;
+		color: #1e293b;
+	}
+
+	.library-hint {
+		margin: 0;
+		font-size: 13px;
+		color: #64748b;
+	}
+
+	.library-error {
+		color: #b91c1c;
+		font-size: 13px;
+	}
+
+	.library-list {
+		display: grid;
+		gap: 8px;
+		padding: 12px;
+		border-radius: 12px;
+		border: 1px solid rgba(148, 163, 184, 0.4);
+		background: #f8fafc;
+		max-height: 220px;
+		overflow-y: auto;
+	}
+
+	.library-item {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 6px;
+		border-radius: 12px;
+		border: 1px solid transparent;
+		background: white;
+		text-align: left;
+		transition: border-color 0.2s ease, box-shadow 0.2s ease;
+	}
+
+	.library-item:hover {
+		border-color: rgba(37, 99, 235, 0.4);
+		box-shadow: 0 6px 14px rgba(37, 99, 235, 0.12);
+	}
+
+	.library-item.active {
+		border-color: rgba(37, 99, 235, 0.6);
+		box-shadow: 0 6px 14px rgba(37, 99, 235, 0.2);
+	}
+
+	.library-select {
+		flex: 1;
+		border: none;
+		background: transparent;
+		cursor: pointer;
+		text-align: left;
+		padding: 6px 8px;
+		font-weight: 600;
+		color: #1e293b;
+	}
+
+	.library-delete {
+		border: none;
+		background: transparent;
+		color: #ef4444;
+		font-weight: 600;
+		cursor: pointer;
+		padding: 4px 6px;
+		border-radius: 6px;
+	}
+
+	.library-delete:hover {
+		background: rgba(239, 68, 68, 0.12);
+	}
+
+	.library-name {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.library-empty {
+		margin: 0;
+		color: #94a3b8;
+		font-size: 13px;
 	}
 
 	.status-item {
